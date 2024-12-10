@@ -1,0 +1,123 @@
+requirements:
+  title: "APIテスト (実践)"
+  target_audience:
+    - 「APIテスト (入門)」を受講済または同等レベルの理解があるエンジニア
+    - TDDサイクルを発展的な機能拡張で実感したいバックエンド/サーバレス開発者
+    - テストカバレッジ、CI連携による品質ゲート設定の実務手法を学びたいエンジニア
+  duration: 60
+
+  objectives:
+    high_level:
+      - TDDにより機能を段階的に拡張しつつ、テストで要件を先行定義・実装誘導
+      - Vitestによるカバレッジ計測と改善サイクルを習得
+      - GitHub Actions CI連携によりPRマージ前にテスト＆カバレッジを品質ゲート化
+    detailed:
+      - 「在庫量が閾値を下回ったら外部調達APIへ発注リクエストを送る」機能をTDDで拡張  
+      - DynamoDBモックを強化し、在庫アイテムごとに「再発注閾値」を持たせる  
+      - 外部API（例：仕入先の在庫発注API）へのHTTPコールをモックし、在庫不足時に正しく発注が行われることをテスト  
+      - カバレッジレポート生成と閾値設定で、未カバー箇所を補完し、PRマージ前に満たない場合はブロックするCIパイプライン構築
+
+  prerequisites:
+    environment:
+      - Node.js/NPM環境
+      - AWS Lambda, API Gateway, DynamoDB, Serverless Frameworkの基礎（前回踏襲）
+      - GitHub ActionsなどCIツールの基本理解（任意）
+    codebase:
+      - 前回作成した在庫管理API (CRUD) をベース
+      - logic.js / handler.js / tests フォルダを活用
+      - DynamoDBモック拡張：  
+        - 各アイテムに `reorderThreshold`（再発注下限在庫数）フィールド追加  
+        - 在庫が `reorderThreshold` 未満になると外部発注APIを呼ぶロジックを実装予定（TDDで導く）
+      - 外部APIモック：  
+        - `vendorApiClient.js`（仮）を追加し、このモジュールをモック  
+        - `vendorApiClient.placeOrder(itemId, quantity)` のような関数をモックしテストで制御
+      - vitest.config.js で coverage 設定（`branches`, `functions`, `lines`, `statements` 全て70%以上必須など）
+      - GitHub Actionsワークフローファイル例（.github/workflows/test.yml）を用意し、PR作成時にテスト＆カバレッジ実行→未達でfail
+
+scenario:
+  phases:
+    introduction:
+      duration: 5
+      steps:
+        - 前回の入門振り返り：CRUD機能をTDDで実装し、Vitestで基本テストを実践
+        - 今回の狙い：  
+          1. **機能拡張**：在庫低下時の自動発注機能  
+          2. **テストドリブン**で新要件を洗い出し、最小限実装→改善  
+          3. **カバレッジ計測**でテスト網羅率を数値化  
+          4. **GitHub Actions**でCI実行、カバレッジ未達の場合PRマージブロック
+
+    incremental_feature_development:
+      duration: 20
+      steps:
+        - **新機能要件定義 (TDDのRedパート)**:
+          1. **在庫不足判定テスト（RED）**  
+            - テストケース例：  
+              `it("should place a reorder when inventory falls below the threshold", ...)`
+            - 初期状態：アイテム `{ id: 'itemA', quantity: 5, reorderThreshold: 10 }`  
+              - GETまたはPUT操作でquantityが `reorderThreshold` 未満になったら `vendorApiClient.placeOrder` を呼ぶことを期待  
+              - この時点でplaceOrderは実装されておらず、テスト失敗
+    
+        - **最小限実装 (TDDのGreenパート)**:
+          2. **ロジック実装**  
+            - `logic.js`でquantity更新時に `reorderThreshold` と比較し、下回った場合 `vendorApiClient.placeOrder` 呼び出す  
+            - `vendorApiClient`はモック化  
+            - 最小限のコードでテストをパスさせ、RED→GREEN達成
+         
+        - **改善 (TDDのRefactorパート)**:
+          3. **コード整備・テスト拡張**  
+            - 冗長な条件分岐や定数を整理  
+            - リファクタリング後もテストグリーンを維持  
+            - 外部APIエラー時のハンドリングテスト追加  
+              - `it("should handle external API errors gracefully", ...)`  
+              - エラー時はログ記録や別ステータス返却など、テスト先行記述→最小限実装→グリーン→リファクタ
+
+    coverage_and_ci_integration:
+      duration: 15
+      steps:
+        - **カバレッジ計測**:
+          1. `npx vitest --coverage` 実行  
+            - HTMLレポート生成  
+            - 未カバー行やブランチを特定
+          2. **カバレッジ閾値設定**（vitest.config.js）  
+            - 例：`"lines": 80, "branches": 70, "functions": 80, "statements": 80`など  
+            - 閾値未達ならテスト結果をfailに
+          3. 不足テスト補足  
+            - 例：外部APIエラー時のログメッセージ未カバー行を追加テスト  
+            - 再実行でカバレッジ改善確認
+        
+        - **CI連携(GitHub Actions)**:
+          4. `.github/workflows/test.yml`でPull Request時にテスト＆カバレッジ実行  
+            - `on: pull_request` トリガーで`npm install`, `npm test -- --coverage`実行  
+            - 結果をPRに表示  
+          5. **品質ゲート**:  
+            - カバレッジ未達成（fail）ならPRのMergeボタンが無効化（GitHub Branch Protection Rules設定例を紹介）  
+            - テストパス＆カバレッジ達成で初めてマージ可能
+
+    introduction_of_integration_and_e2e_tests:
+      duration: 5
+      steps:
+        - **結合テストの紹介**:
+          - 概念説明：複数コンポーネント（logic.js + vendorApiClient実装 + DynamoDB実サービスなど）を組み合わせたテスト  
+          - CIでユニットテストに加え結合テスト実行例  
+          - この講義では詳細実装はしないが、必要に応じて分離やマイクロサービス間通信のテストに用いる旨説明
+        - **E2Eテストの紹介**:
+          - 概念説明：API Gatewayを通して実際のLambdaデプロイ先環境でエンドツーエンドのテスト  
+          - PostmanやPlaywright、Cypressなどツール例  
+          - こちらも詳細は割愛、実運用でUIや外部システム含めた最終確認に有効
+
+    conclusion:
+      duration: 5
+      steps:
+        - 総括:
+          1. **TDDで要件定義→実装→改善**を一貫して体験  
+            - 在庫不足時の自動発注という「必要性を伴った」機能拡張でTDD効果実感
+          2. **カバレッジ測定と改善**  
+            - テスト不足箇所を数値化し、計画的に補完可能  
+            - 品質を定量的に把握し、チーム全体で合意形成しやすい
+          3. **CI連携と品質ゲート**  
+            - GitHub Actionsでテスト自動実行  
+            - カバレッジ未達成時にPRマージ不可にすることで、品質向上ループを継続
+          4. **結合/ E2Eテスト予告**  
+            - 今回は主にユニットレベル、APIレベルテスト  
+            - 将来的にはシステム全体の品質保証として結合テスト、E2Eテストへ拡張可能
+
