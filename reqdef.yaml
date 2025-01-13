@@ -1,123 +1,120 @@
 requirements:
-  title: "APIテスト (実践)"
+  title: "APIテスト (実践編)"
   target_audience:
-    - 「APIテスト (入門)」を受講済または同等レベルの理解があるエンジニア
-    - TDDサイクルを発展的な機能拡張で実感したいバックエンド/サーバレス開発者
-    - テストカバレッジ、CI連携による品質ゲート設定の実務手法を学びたいエンジニア
-  duration: 60
-
+    - 単体テスト入門を受講済みのエンジニア
+    - CI/CD導入を検討している開発チーム
+    - Node.js + Serverlessアプリケーションの品質保証を強化したいエンジニア
+  duration: 50
   objectives:
     high_level:
-      - TDDにより機能を段階的に拡張しつつ、テストで要件を先行定義・実装誘導
-      - Vitestによるカバレッジ計測と改善サイクルを習得
-      - GitHub Actions CI連携によりPRマージ前にテスト＆カバレッジを品質ゲート化
+      - 前回の復習を通じてテストの基礎と今回のゴールを明確化
+      - テストカバレッジを活用し、品質を可視化できるようにする
+      - CI/CD環境での自動テスト実行・レポート共有を導入
+      - 結合テスト・E2Eテストの意義と導入ステップを理解する
     detailed:
-      - 「在庫量が閾値を下回ったら外部調達APIへ発注リクエストを送る」機能をTDDで拡張  
-      - DynamoDBモックを強化し、在庫アイテムごとに「再発注閾値」を持たせる  
-      - 外部API（例：仕入先の在庫発注API）へのHTTPコールをモックし、在庫不足時に正しく発注が行われることをテスト  
-      - カバレッジレポート生成と閾値設定で、未カバー箇所を補完し、PRマージ前に満たない場合はブロックするCIパイプライン構築
+      - Vitestでのカバレッジレポート取得とHTML出力方法
+      - カバレッジをGitHub Pagesなどで公開し、チーム全体が閲覧可能な仕組みを紹介
+      - GitHub Actionsなどを用いたCI/CDパイプラインでのテスト自動化
+      - リスクベーステストやリファクタリング時のテスト保守運用のポイント
+      - 結合テスト・E2Eテストの概要とAPIテストからの拡張方針
 
   prerequisites:
     environment:
-      - Node.js/NPM環境
-      - AWS Lambda, API Gateway, DynamoDB, Serverless Frameworkの基礎（前回踏襲）
-      - GitHub ActionsなどCIツールの基本理解（任意）
+      - 前回の「APIテスト (入門)」内容の理解
+      - Node.js/NPM環境 (v14以上推奨)
+      - GitHubリポジトリ（GitHub Actions 例示のため）
+      - ある程度のAWS LambdaやExpress、Serverless Framework知識
     codebase:
-      - 前回作成した在庫管理API (CRUD) をベース
-      - logic.js / handler.js / tests フォルダを活用
-      - DynamoDBモック拡張：  
-        - 各アイテムに `reorderThreshold`（再発注下限在庫数）フィールド追加  
-        - 在庫が `reorderThreshold` 未満になると外部発注APIを呼ぶロジックを実装予定（TDDで導く）
-      - 外部APIモック：  
-        - `vendorApiClient.js`（仮）を追加し、このモジュールをモック  
-        - `vendorApiClient.placeOrder(itemId, quantity)` のような関数をモックしテストで制御
-      - vitest.config.js で coverage 設定（`branches`, `functions`, `lines`, `statements` 全て70%以上必須など）
-      - GitHub Actionsワークフローファイル例（.github/workflows/test.yml）を用意し、PR作成時にテスト＆カバレッジ実行→未達でfail
+      - 前回構築したVitest + handler.js + logic.js + モックDBの構成
+      - カバレッジを取得できるようにvitest.config.js等で最低限の設定追加
+      - CI用ワークフロー（GitHub Actions）ファイルのひな形
 
 scenario:
   phases:
+
     introduction:
       duration: 5
       steps:
-        - 前回の入門振り返り：CRUD機能をTDDで実装し、Vitestで基本テストを実践
-        - 今回の狙い：  
-          1. **機能拡張**：在庫低下時の自動発注機能  
-          2. **テストドリブン**で新要件を洗い出し、最小限実装→改善  
-          3. **カバレッジ計測**でテスト網羅率を数値化  
-          4. **GitHub Actions**でCI実行、カバレッジ未達の場合PRマージブロック
+        recap_previous_session:
+          - "前回のAPIテスト入門の復習 (TDDの流れ、Vitestの基本)"
+          - "単体テスト導入によるメリット (品質向上・早期バグ発見など) を再確認"
+        goal_of_this_session:
+          - "今回の実践編ではカバレッジやCI/CD、テスト計画を導入し、より現場に近い運用を体験"
+          - "結合テスト・E2Eテストへのステップも紹介"
 
-    incremental_feature_development:
-      duration: 20
+    coverage:
+      duration: 10
       steps:
-        - **新機能要件定義 (TDDのRedパート)**:
-          1. **在庫不足判定テスト（RED）**  
-            - テストケース例：  
-              `it("should place a reorder when inventory falls below the threshold", ...)`
-            - 初期状態：アイテム `{ id: 'itemA', quantity: 5, reorderThreshold: 10 }`  
-              - GETまたはPUT操作でquantityが `reorderThreshold` 未満になったら `vendorApiClient.placeOrder` を呼ぶことを期待  
-              - この時点でplaceOrderは実装されておらず、テスト失敗
-    
-        - **最小限実装 (TDDのGreenパート)**:
-          2. **ロジック実装**  
-            - `logic.js`でquantity更新時に `reorderThreshold` と比較し、下回った場合 `vendorApiClient.placeOrder` 呼び出す  
-            - `vendorApiClient`はモック化  
-            - 最小限のコードでテストをパスさせ、RED→GREEN達成
-         
-        - **改善 (TDDのRefactorパート)**:
-          3. **コード整備・テスト拡張**  
-            - 冗長な条件分岐や定数を整理  
-            - リファクタリング後もテストグリーンを維持  
-            - 外部APIエラー時のハンドリングテスト追加  
-              - `it("should handle external API errors gracefully", ...)`  
-              - エラー時はログ記録や別ステータス返却など、テスト先行記述→最小限実装→グリーン→リファクタ
+        coverage_concepts:
+          - "ステートメント・ライン・ブランチ・関数カバレッジなどの概念"
+          - "カバレッジとバグ検出率の関係 (100%が万能でないことも強調)"
+        coverage_setup_vitest:
+          - "Vitestでカバレッジを取得するコマンドやvitest.config.jsの設定"
+          - "npx vitest --coverage 実行後、coverageディレクトリからHTMLレポート確認"
+        coverage_utilization:
+          - "レポートから見えるテスト漏れ・分岐漏れの洗い出し方"
+          - "リスクベーステストを組み合わせて重点検証箇所を特定"
 
-    coverage_and_ci_integration:
-      duration: 15
-      steps:
-        - **カバレッジ計測**:
-          1. `npx vitest --coverage` 実行  
-            - HTMLレポート生成  
-            - 未カバー行やブランチを特定
-          2. **カバレッジ閾値設定**（vitest.config.js）  
-            - 例：`"lines": 80, "branches": 70, "functions": 80, "statements": 80`など  
-            - 閾値未達ならテスト結果をfailに
-          3. 不足テスト補足  
-            - 例：外部APIエラー時のログメッセージ未カバー行を追加テスト  
-            - 再実行でカバレッジ改善確認
-        
-        - **CI連携(GitHub Actions)**:
-          4. `.github/workflows/test.yml`でPull Request時にテスト＆カバレッジ実行  
-            - `on: pull_request` トリガーで`npm install`, `npm test -- --coverage`実行  
-            - 結果をPRに表示  
-          5. **品質ゲート**:  
-            - カバレッジ未達成（fail）ならPRのMergeボタンが無効化（GitHub Branch Protection Rules設定例を紹介）  
-            - テストパス＆カバレッジ達成で初めてマージ可能
-
-    introduction_of_integration_and_e2e_tests:
+    page_publication:
       duration: 5
       steps:
-        - **結合テストの紹介**:
-          - 概念説明：複数コンポーネント（logic.js + vendorApiClient実装 + DynamoDB実サービスなど）を組み合わせたテスト  
-          - CIでユニットテストに加え結合テスト実行例  
-          - この講義では詳細実装はしないが、必要に応じて分離やマイクロサービス間通信のテストに用いる旨説明
-        - **E2Eテストの紹介**:
-          - 概念説明：API Gatewayを通して実際のLambdaデプロイ先環境でエンドツーエンドのテスト  
-          - PostmanやPlaywright、Cypressなどツール例  
-          - こちらも詳細は割愛、実運用でUIや外部システム含めた最終確認に有効
+        coverage_report_sharing:
+          - "AWS S3上にカバレッジレポート(HTML)を配置することで社内から簡単に参照可能に"
+          - "（前提）S3バケットは既に作成・設定済み。S3 URLは社内VPNや特定のACLで限定公開できる"
+        s3_upload_example:
+          - "GitHub Actions でカバレッジ生成後、AWS CLI や github-actions/aws-s3 プラグインなどでレポートをS3に自動アップロードする例"
+          - "アップロードした後の S3 のURLを通知/共有するフロー"
+        doc_merit:
+          - "HTMLレポートを常に最新化 → Pull Requestレビューや新メンバーの学習に活用可能"
+          - "世界中に公開される懸念がなく、適切な権限設定でセキュアに運用"
+
+    ci_cd:
+      duration: 10
+      steps:
+        pipeline_overview:
+          - "CI/CDとは何か (自動ビルド・テスト・デプロイ)"
+          - "なぜAPIテストをCI/CDに組み込むと良いのか (回帰バグの早期発見)"
+        coverage_report_auto:
+          - ".github/workflows/test.yml 例：Pull Request時に自動テスト＆カバレッジ実行"
+          - "生成されたレポートをArtifactsやGitHub Pagesへ自動アップロードする流れ"
+        local_precommit_check:
+          - "huskyやlint-stagedを用いたコミット前テスト → 小さな単位でバグを封じ込め"
+          - "ローカルとCI/CDの二段構えでバグ検知率を上げる"
+
+    advanced_topics:
+      duration: 10
+      steps:
+        test_plan_risk_based:
+          - "リスクが高い（ビジネスインパクトが大きい）箇所から優先的にテスト"
+          - "テストケース洗い出し（正常系・異常系・境界値・外部連携）と優先度設定"
+        refactoring_maintenance:
+          - "リファクタリングや仕様変更時にテストをどの程度修正するか"
+          - "冗長・重複テストの整理や不要テストの削除、定期的なテストレビュー"
+        other_future:
+          - "負荷テスト・セキュリティテスト・契約テストなど、今後の拡張方針"
+          - "プロダクトの成長にあわせたテスト自動化のスケーリング"
+
+    integration_e2e:
+      duration: 5
+      steps:
+        integration_test_significance:
+          - "結合テスト（Integration Test）でモジュール間連携の問題を発見"
+          - "API Gateway ⇔ Lambda ⇔ DBの実際の疎通確認など"
+        e2e_test_introduction:
+          - "E2Eテスト(Playwright/Cypress等)でフロントエンド→バックエンドの一連の流れを検証"
+          - "ユーザー視点の操作シナリオを自動化し、全体的な不具合を早期発見"
+        how_to_start:
+          - "まずは結合テストから始めて、段階的にE2Eへ拡大"
+          - "単体・結合・E2Eのバランスを取りつつ高品質を担保"
 
     conclusion:
-      duration: 5
+      duration: 1
       steps:
-        - 総括:
-          1. **TDDで要件定義→実装→改善**を一貫して体験  
-            - 在庫不足時の自動発注という「必要性を伴った」機能拡張でTDD効果実感
-          2. **カバレッジ測定と改善**  
-            - テスト不足箇所を数値化し、計画的に補完可能  
-            - 品質を定量的に把握し、チーム全体で合意形成しやすい
-          3. **CI連携と品質ゲート**  
-            - GitHub Actionsでテスト自動実行  
-            - カバレッジ未達成時にPRマージ不可にすることで、品質向上ループを継続
-          4. **結合/ E2Eテスト予告**  
-            - 今回は主にユニットレベル、APIレベルテスト  
-            - 将来的にはシステム全体の品質保証として結合テスト、E2Eテストへ拡張可能
-
+        wrap_up:
+          - type: "50分のまとめ"
+            why: "今回学んだカバレッジ/CI/CD/結合テストなどのエッセンスを再確認"
+            scenario:
+              - "継続的な自動テストとレポートの共有で品質と開発速度を両立"
+              - "段階的にテストを拡張しながら、チーム全体での品質文化を醸成"
+            outcomes:
+              - "今後のAPIテスト強化やE2E、負荷テストなどへの布石"
