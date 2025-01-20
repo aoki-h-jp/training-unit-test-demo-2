@@ -75,6 +75,11 @@ describe('Inventory Management', () => {
       await expect(updateItem({ id: item.id, quantity: -1 }))
         .rejects.toThrow(InventoryError);
     });
+
+    it("idもしくはquantityがない場合はエラーを返す", async () => {
+      await expect(updateItem({ id: 'Cola', quantity: undefined as any }))
+        .rejects.toThrow(InventoryError);
+    });
   });
 
   describe('DELETE /inventory/:id', () => {
@@ -88,6 +93,11 @@ describe('Inventory Management', () => {
 
     it('should throw 404 when deleting non-existent item', async () => {
       await expect(deleteItem({ id: 'non-existent' }))
+        .rejects.toThrow(InventoryError);
+    });
+
+    it("idがない場合はエラーを返す", async () => {
+      await expect(deleteItem({ id: undefined as any }))
         .rejects.toThrow(InventoryError);
     });
   });
